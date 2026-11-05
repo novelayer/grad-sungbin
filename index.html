@@ -8,6 +8,7 @@
 <meta name="description" content="허성빈의 졸업전시회를 축하합니다.">
 <meta name="theme-color" content="#0b121b">
 <meta name="format-detection" content="telephone=no">
+<meta name="build" content="v4.3-ios">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="축.졸업전시회">
 <meta property="og:title" content="축.졸업전시회 | 허성빈">
@@ -209,6 +210,8 @@ body{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-selec
     var p=document.getElementById('poster'); if(p) p.hidden=false;
     var l=document.getElementById('live'); if(l) l.textContent='축.졸업전시회. 허성빈. 허씨가 보낸 화환이 놓인 졸업전시 축하 포스터입니다.'; }
   window.__fail = fail;
+  // 3D가 멈추면 완성 포스터로 건너뛰지 않고, 가장 가벼운 화질로 한 번 다시 연다
+  window.__retryLow = function(){ try { if (/[?&]q=low/.test(location.search)) return false; var u = new URL(location.href); u.searchParams.set('q','low'); location.replace(u.toString()); return true; } catch(e){ return false; } };
   try{ var c=document.createElement('canvas'); if(!window.THREE || !(c.getContext('webgl')||c.getContext('experimental-webgl'))) { fail(); return; } }catch(e){ fail(); return; }
   try{
 /* FROM BLUEPRINT TO BLOOM — 허성빈 졸업전시 축하
@@ -303,7 +306,7 @@ body{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-selec
     var ua = navigator.userAgent, ios = /iP(hone|ad|od)/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     var gl2 = false; try { gl2 = !!document.createElement('canvas').getContext('webgl2'); } catch (e) { }
     if (!gl2) return 'low';
-    if (ios) return 'high';
+    if (ios) return 'mid'; // 카카오톡 인앱 등 WKWebView는 GPU 메모리 여유가 적다
     var mem = navigator.deviceMemory || 4, cores = navigator.hardwareConcurrency || 4;
     if (/Android/.test(ua)) return mem >= 6 && cores >= 8 ? 'high' : mem >= 4 ? 'mid' : 'low';
     return 'high';
@@ -1187,7 +1190,7 @@ body{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-selec
     if (!Q.post || !T.EffectComposer || !T.UnrealBloomPass) return null;
     var pr = renderer.getPixelRatio(), rt;
     var opts = { minFilter: T.LinearFilter, magFilter: T.LinearFilter, format: T.RGBAFormat };
-    var msaa = !/[?&]nomsaa/.test(location.search) && renderer.capabilities.isWebGL2 && T.WebGLMultisampleRenderTarget;
+    var msaa = TIER === 'high' && !/[?&]nomsaa/.test(location.search) && renderer.capabilities.isWebGL2 && T.WebGLMultisampleRenderTarget;
     rt = msaa ? new T.WebGLMultisampleRenderTarget(W * pr, H * pr, opts) : new T.WebGLRenderTarget(W * pr, H * pr, opts);
     rt.texture.encoding = T.sRGBEncoding; // 8비트 버퍼에서 어두운 계조가 끊기지 않도록 sRGB로 저장
     var comp = new T.EffectComposer(renderer, rt);
@@ -1382,15 +1385,17 @@ body{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-selec
     cancelAnimationFrame(raf); cancelAnimationFrame(amb); window.__amb = 0; textShown = false; lastBoard = '';
     ORBIT.az = ORBIT.el = ORBIT.taz = ORBIT.tel = 0;
     app.classList.remove('celebrate', 'done', 'playing', 'instant'); app.classList.add('idle');
-    replay.hidden = true; skip.hidden = true; save.hidden = true; state = 'idle';
+    replay.hidden = true; skip.hidden = true; save.hidden = true; state = 'idle'; idleSince = performance.now();
     apply(-1); render();
   }
 
   /* 입력: 탭으로 시작, 완성 후 끌어서 모형 둘러보기 */
-  var drag = { on: false, x: 0, y: 0, moved: false, id: null };
+  var drag = { on: false, x: 0, y: 0, moved: false, id: null, t: 0 };
+  var readyAt = Infinity, idleSince = 0; // 링크를 연 손가락의 '유령 터치'가 시작으로 읽히지 않도록
   app.addEventListener('pointerdown', function (e) {
     if (e.target.closest && e.target.closest('button')) return;
-    drag.on = true; drag.moved = false; drag.x = e.clientX; drag.y = e.clientY; drag.az = ORBIT.taz; drag.el = ORBIT.tel; drag.id = e.pointerId;
+    if (e.isPrimary === false) return;
+    drag.on = true; drag.moved = false; drag.x = e.clientX; drag.y = e.clientY; drag.az = ORBIT.taz; drag.el = ORBIT.tel; drag.id = e.pointerId; drag.t = performance.now();
     if (state === 'done') { try { app.setPointerCapture(e.pointerId); } catch (er) { } app.style.cursor = 'grabbing'; }
   });
   app.addEventListener('pointermove', function (e) {
@@ -1401,7 +1406,8 @@ body{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-selec
   });
   function endDrag(e) {
     if (!drag.on) return; drag.on = false; app.style.cursor = ''; ORBIT.last = performance.now();
-    if (e.type === 'pointerup' && !drag.moved && state === 'idle') start();
+    var now = performance.now();
+    if (e.type === 'pointerup' && !drag.moved && state === 'idle' && drag.t > readyAt + 900 && drag.t > idleSince + 500 && now - drag.t < 900) start();
   }
   app.addEventListener('pointerup', endDrag);
   app.addEventListener('pointercancel', endDrag);
@@ -1411,12 +1417,12 @@ body{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-selec
   });
   [skip, replay, save].forEach(function (b) { b.addEventListener('pointerdown', function (e) { e.stopPropagation(); }); b.addEventListener('pointerup', function (e) { e.stopPropagation(); }); });
   skip.addEventListener('click', function (e) { e.stopPropagation(); if (state === 'play') finish(true); });
-  replay.addEventListener('click', function (e) { e.stopPropagation(); if (state !== 'done') return; stopSound(); reset(); setTimeout(start, 350); });
+  replay.addEventListener('click', function (e) { e.stopPropagation(); if (state !== 'done') return; stopSound(); reset(); app.focus(); });
   var rz = 0;
   function onResize() { clearTimeout(rz); rz = setTimeout(function () { layout(); if (state !== 'play') { apply(state === 'done' ? END : -1); render(); } }, 120); }
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
-  canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); if (window.__fail) window.__fail(); });
+  canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); if (window.__retryLow && window.__retryLow()) return; if (window.__fail) window.__fail(); });
 
   /* 배경화면 저장: 완성 장면을 1290×2796으로 다시 그리고 문구를 합성 */
   var sheet = $('sheet'), busy = $('busy'), wpImg = $('wp'), shareBtn = $('share'), dl = $('dl'), wpBlob = null, wpURL = '';
@@ -1484,14 +1490,13 @@ body{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-selec
     drawWood(woodC.getContext('2d'));
     paintRibbon(); ribbonTex.needsUpdate = true; paintPlaque(); plaqueTex.needsUpdate = true;
     layout();
-    if (false) { finish(true); }
-    else { apply(-1); render(); }
-    app.classList.add('ready');
+    apply(-1); render(); // 동작 줄이기가 켜진 기기도 도면에서 시작 (터치로 직접 재생)
+    app.classList.add('ready'); readyAt = performance.now();
     window.__ready = true;
   });
 })();
 
-  }catch(e){ console.error(e); fail(); }
+  }catch(e){ console.error(e); if (!window.__retryLow()) fail(); }
 })();
 </script>
 </body>
