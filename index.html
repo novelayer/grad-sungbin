@@ -1484,7 +1484,7 @@ body{-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-selec
     drawWood(woodC.getContext('2d'));
     paintRibbon(); ribbonTex.needsUpdate = true; paintPlaque(); plaqueTex.needsUpdate = true;
     layout();
-    if (REDUCE) { finish(true); }
+    if (false) { finish(true); }
     else { apply(-1); render(); }
     app.classList.add('ready');
     window.__ready = true;
